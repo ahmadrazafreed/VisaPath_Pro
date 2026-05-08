@@ -32,12 +32,15 @@ app = FastAPI(title="VisaPath Pro API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production: replace with your frontend domain
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://visa-path-pro.vercel.app/",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # ── Auth dependency ────────────────────────────────────────────────────────
 async def get_current_user(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -276,6 +279,6 @@ async def get_live_data(country: str):
         return doc.to_dict()
     return {"country": country, "data": None, "message": "No live data yet — run scraper"}
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health():
     return {"status": "healthy", "gemini": "connected", "firebase": "connected"}
