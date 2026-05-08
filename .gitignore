@@ -1,0 +1,8 @@
+venv/
+node_modules/
+__pycache__/
+*.pyc
+.env
+firebase-service-account.json
+dist/
+.DS_Store
