@@ -3,79 +3,42 @@ import { signOut } from "firebase/auth";
 import { api, COUNTRIES } from "../api";
 
 const VISA_TYPES = [
-  { key: "study", label: "📚 Study", activeClass: "active-study" },
-  { key: "work",  label: "💼 Work",  activeClass: "active-work"  },
-  { key: "visit", label: "✈️ Visit", activeClass: "active-visit" },
-];
-
-const QUICK_QUESTIONS = [
-  "What documents do I need?",
-  "How long does processing take?",
-  "What is the cost breakdown?",
-  "Can I work on this visa?",
-  "Common rejection reasons?",
-  "How to write a strong SOP?",
-  "What English test is required?",
-  "Pathway to permanent residency?",
+  { key: "study", label: "📚 Study", color: "#10b981" },
+  { key: "work",  label: "💼 Work",  color: "#3b82f6" },
+  { key: "visit", label: "✈️ Visit", color: "#f59e0b" },
 ];
 
 export default function Dashboard({ user, auth, onOpenChat }) {
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedVisa, setSelectedVisa] = useState(null);
   const [visaData, setVisaData] = useState(null);
-  const [countries, setCountries] = useState({});
+  const [countries, setCountries] = useState(COUNTRIES);
   const [checklist, setChecklist] = useState({});
   const [sessions, setSessions] = useState([]);
+  const [loadingVisa, setLoadingVisa] = useState(false);
 
   useEffect(() => {
-    loadCountries();
-    loadSessions();
+    api.get("/api/countries", user).then(d => { if (d) setCountries(d); }).catch(() => {});
+    api.get("/api/sessions", user).then(d => setSessions(d || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
     if (selectedCountry && selectedVisa) {
-      loadVisaData(selectedCountry, selectedVisa);
-      loadChecklist(selectedCountry, selectedVisa);
+      setLoadingVisa(true);
+      setVisaData(null);
+      api.get(`/api/visa/${encodeURIComponent(selectedCountry)}/${selectedVisa}`, user)
+        .then(d => { setVisaData(d); setLoadingVisa(false); })
+        .catch(() => setLoadingVisa(false));
+      api.get(`/api/checklist/${encodeURIComponent(selectedCountry)}/${selectedVisa}`, user)
+        .then(d => setChecklist(d?.items || {}))
+        .catch(() => {});
     }
   }, [selectedCountry, selectedVisa]);
-
-  const loadCountries = async () => {
-    try {
-      const data = await api.get("/api/countries", user);
-      setCountries(data);
-    } catch (e) {
-      // Use local data as fallback
-      setCountries(COUNTRIES);
-    }
-  };
-
-  const loadSessions = async () => {
-    try {
-      const data = await api.get("/api/sessions", user);
-      setSessions(data || []);
-    } catch (e) {}
-  };
-
-  const loadVisaData = async (country, visa) => {
-    try {
-      const data = await api.get(`/api/visa/${encodeURIComponent(country)}/${visa}`, user);
-      setVisaData(data);
-    } catch (e) {}
-  };
-
-  const loadChecklist = async (country, visa) => {
-    try {
-      const data = await api.get(`/api/checklist/${encodeURIComponent(country)}/${visa}`, user);
-      setChecklist(data.items || {});
-    } catch (e) {}
-  };
 
   const toggleCheck = async (idx) => {
     const updated = { ...checklist, [idx]: !checklist[idx] };
     setChecklist(updated);
-    try {
-      await api.post("/api/checklist", { country: selectedCountry, visa_type: selectedVisa, items: updated }, user);
-    } catch (e) {}
+    api.post("/api/checklist", { country: selectedCountry, visa_type: selectedVisa, items: updated }, user).catch(() => {});
   };
 
   const doneCount = Object.values(checklist).filter(Boolean).length;
@@ -86,57 +49,67 @@ export default function Dashboard({ user, auth, onOpenChat }) {
   const initials = displayName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 0px)" }}>
+    <div className="db-root">
       {/* NAV */}
-      <nav className="nav">
-        <div className="nav-logo">Visa<span>Path</span></div>
-        <div className="nav-right">
-          <span className="badge badge-live">LIVE Data</span>
-          <div className="nav-user">
-            <div className="nav-avatar">{initials}</div>
+      <nav className="db-nav">
+        <div className="db-logo">Visa<span>Path</span> <span className="db-pro-badge">PRO</span></div>
+        <div className="db-nav-right">
+          <span className="db-live-dot">● LIVE</span>
+          <div className="db-user-chip">
+            <div className="db-avatar">{initials}</div>
             <span>{displayName}</span>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={() => signOut(auth)}>Sign out</button>
+          <button className="db-signout" onClick={() => signOut(auth)}>Sign out</button>
         </div>
       </nav>
 
-      <div className="dashboard">
-        {/* SIDEBAR — Chat history */}
-        <aside className="sidebar">
-          <div className="sidebar-section">
-            <button
-              className="btn btn-primary"
-              style={{ width: "100%", justifyContent: "center", marginBottom: 16 }}
-              onClick={() => onOpenChat(selectedCountry && selectedVisa ? { country: selectedCountry, visa: selectedVisa } : null)}
-            >
-              + New Chat
-            </button>
+      <div className="db-layout">
+        {/* SIDEBAR */}
+        <aside className="db-sidebar">
+          <button
+            className="db-new-chat-btn"
+            onClick={() => onOpenChat(selectedCountry && selectedVisa ? { country: selectedCountry, visa: selectedVisa } : null)}
+          >
+            ✦ New Consultation
+          </button>
 
-            {sessions.length > 0 && (
-              <>
-                <div className="sidebar-label">Recent Chats</div>
-                {sessions.map(s => (
-                  <div
-                    key={s.id}
-                    className="session-item"
-                    onClick={() => onOpenChat({ sessionId: s.id, country: s.country, visa: s.visa_type })}
-                  >
-                    <div className="session-title">
-                      {s.country ? `${COUNTRIES[s.country]?.flag || ""} ${s.country}` : "General Chat"}
+          <div className="db-sidebar-section">
+              <div className="db-sidebar-label">Recent Chats</div>
+              {sessions.length === 0 && (
+                <p style={{fontSize:"0.74rem",color:"#3d4f6e",padding:"4px 0",lineHeight:1.5}}>
+                  No chats yet — start a consultation
+                </p>
+              )}
+              {sessions.slice(0, 10).map(s => (
+                <div key={s.id} className="db-session-item"
+                  onClick={() => onOpenChat({ sessionId: s.id, country: s.country, visa: s.visa_type })}>
+                  <span className="db-session-flag">{COUNTRIES[s.country]?.flag || "💬"}</span>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div className="db-session-title">
+                      {s.title || (s.country ? s.country : "General Chat")}
                     </div>
-                    <div className="session-meta">{s.last_message?.slice(0, 40) || "No messages yet"}...</div>
+                    <div className="db-session-sub">{(s.last_message || "").slice(0, 30)}…</div>
                   </div>
-                ))}
-              </>
-            )}
-          </div>
+                  <button
+                    className="db-session-del"
+                    onClick={async e => {
+                      e.stopPropagation();
+                      try {
+                        await api.delete(`/api/sessions/${s.id}`, user);
+                        setSessions(p => p.filter(x => x.id !== s.id));
+                      } catch {}
+                    }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
 
-          {/* Quick questions */}
           {selectedCountry && selectedVisa && (
-            <div className="sidebar-section" style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-              <div className="sidebar-label">Quick Questions</div>
-              {QUICK_QUESTIONS.map((q, i) => (
-                <button key={i} className="quick-btn" onClick={() => onOpenChat({ country: selectedCountry, visa: selectedVisa, prefill: q + " for " + selectedCountry + " " + selectedVisa + " visa" })}>
+            <div className="db-sidebar-section">
+              <div className="db-sidebar-label">Quick Ask</div>
+              {["What documents do I need?","Processing time?","Cost breakdown?","Work rights?","Rejection reasons?"].map((q, i) => (
+                <button key={i} className="db-quick-q"
+                  onClick={() => onOpenChat({ country: selectedCountry, visa: selectedVisa, prefill: q + ` for ${selectedCountry} ${selectedVisa} visa` })}>
                   {q}
                 </button>
               ))}
@@ -145,156 +118,170 @@ export default function Dashboard({ user, auth, onOpenChat }) {
         </aside>
 
         {/* MAIN */}
-        <main className="main-content">
+        <main className="db-main">
           {/* HERO */}
-          <div className="hero">
-            <div className="hero-badge">✈️ &nbsp; AI-Powered Immigration Consultant</div>
-            <h1>Get Your Visa to<br /><em>Any Country.</em> Fast.</h1>
-            <p>Expert guidance powered by real-time government data and AI. Study, work, and travel visa intelligence across 7 major destinations.</p>
-
-            <div className="stats-row">
-              {[["7","Countries"],["21","Visa Categories"],["Live","Processing Times"],["AI","Web Search"]].map(([v,l]) => (
-                <div className="stat" key={l}><div className="stat-val">{v}</div><div className="stat-label">{l}</div></div>
+          <div className="db-hero">
+            <div className="db-hero-badge">✈️ AI-Powered Immigration Consultant</div>
+            <h1 className="db-hero-title">Your Visa. <em>Our Expertise.</em></h1>
+            <p className="db-hero-sub">Expert guidance for study, work and travel visas across 7 major destinations — powered by real-time AI.</p>
+            <div className="db-stats">
+              {[["7","Countries"],["21","Visa Types"],["Live","Processing Times"],["AI","Web Search"]].map(([v,l]) => (
+                <div key={l} className="db-stat">
+                  <div className="db-stat-val">{v}</div>
+                  <div className="db-stat-label">{l}</div>
+                </div>
               ))}
             </div>
           </div>
 
-          {/* COUNTRY SELECTOR */}
-          <div className="section">
-            <div className="section-header">
-              <span className="section-title">🌍 Select Destination</span>
-              <span className="section-sub">Click a country to focus the AI consultant</span>
+          {/* COUNTRY GRID */}
+          <div className="db-section">
+            <div className="db-section-head">
+              <span className="db-section-title">🌍 Select Destination</span>
+              <span className="db-section-sub">Choose a country to get started</span>
             </div>
-            <div className="country-grid">
+            <div className="db-country-grid">
               {Object.entries(countries).map(([country, data]) => (
                 <div
                   key={country}
-                  className={`country-card${selectedCountry === country ? " selected" : ""}`}
-                  onClick={() => { setSelectedCountry(country); setSelectedVisa(null); setVisaData(null); }}
+                  className={`db-country-card${selectedCountry === country ? " selected" : ""}`}
+                  onClick={() => { setSelectedCountry(country); setSelectedVisa(null); setVisaData(null); setChecklist({}); }}
                 >
-                  <span className="country-flag">{data.flag}</span>
-                  <div className="country-name">{country}</div>
+                  <div className="db-country-flag">{data.flag}</div>
+                  <div className="db-country-name">{country}</div>
+                  <div className="db-country-sub">{(data.highlight || "").split("·")[0].trim()}</div>
                 </div>
               ))}
             </div>
+          </div>
 
-            {/* VISA TYPE TABS */}
-            {selectedCountry && (
-              <div>
-                <div className="section-header" style={{ marginTop: 8 }}>
-                  <span className="section-title">{countries[selectedCountry]?.flag} {selectedCountry}</span>
-                  <span className="section-sub">{countries[selectedCountry]?.highlight}</span>
-                </div>
-                <div className="visa-tabs">
-                  {VISA_TYPES.map(vt => (
-                    <button
-                      key={vt.key}
-                      className={`visa-tab ${vt.key}${selectedVisa === vt.key ? " " + vt.activeClass : ""}`}
-                      onClick={() => setSelectedVisa(vt.key)}
-                    >
-                      {vt.label}
-                    </button>
-                  ))}
-                  <button
-                    className="btn btn-primary btn-sm"
-                    style={{ marginLeft: "auto" }}
-                    onClick={() => onOpenChat({ country: selectedCountry, visa: selectedVisa })}
-                  >
-                    Ask AI Consultant →
-                  </button>
-                </div>
+          {/* VISA TYPE SELECTOR */}
+          {selectedCountry && (
+            <div className="db-section">
+              <div className="db-section-head">
+                <span className="db-section-title">{countries[selectedCountry]?.flag} {selectedCountry}</span>
+                <span className="db-section-sub">{countries[selectedCountry]?.highlight}</span>
               </div>
-            )}
+              <div className="db-visa-tabs">
+                {VISA_TYPES.map(vt => (
+                  <button
+                    key={vt.key}
+                    className={`db-visa-tab${selectedVisa === vt.key ? " active" : ""}`}
+                    style={selectedVisa === vt.key ? { borderColor: vt.color, color: vt.color, background: vt.color + "15" } : {}}
+                    onClick={() => setSelectedVisa(vt.key)}
+                  >
+                    {vt.label}
+                  </button>
+                ))}
+                <button
+                  className="db-ask-ai-btn"
+                  onClick={() => onOpenChat({ country: selectedCountry, visa: selectedVisa })}
+                >
+                  Ask AI Consultant →
+                </button>
+              </div>
+            </div>
+          )}
 
-            {/* VISA INFO PANEL */}
-            {visaData && (
-              <div className="visa-panel">
-                <div className="visa-panel-header">
+          {/* LOADING */}
+          {loadingVisa && (
+            <div className="db-section">
+              <div className="db-loading">Loading visa information...</div>
+            </div>
+          )}
+
+          {/* VISA INFO PANEL */}
+          {visaData && !loadingVisa && (
+            <div className="db-section">
+              <div className="db-visa-panel">
+                <div className="db-visa-panel-head">
                   <div>
-                    <div className="visa-panel-title">{visaData.name}</div>
-                    <div className="visa-panel-sub">{countries[selectedCountry]?.flag} {selectedCountry} · {selectedVisa?.charAt(0).toUpperCase() + selectedVisa?.slice(1)} Visa</div>
+                    <div className="db-visa-name">{visaData.name}</div>
+                    <div className="db-visa-sub">{countries[selectedCountry]?.flag} {selectedCountry} · {selectedVisa?.charAt(0).toUpperCase() + selectedVisa?.slice(1)} Visa</div>
                   </div>
-                  <div className="visa-meta">
-                    <div className="visa-meta-chip">⏱ Processing <strong>{visaData.time}</strong></div>
-                    <div className="visa-meta-chip">💳 Cost <strong>{visaData.cost}</strong></div>
+                  <div className="db-visa-chips">
+                    <div className="db-visa-chip">⏱ <strong>{visaData.time}</strong></div>
+                    <div className="db-visa-chip">💳 <strong>{visaData.cost}</strong></div>
                     {visaData.official_url && (
-                      <a href={visaData.official_url} target="_blank" rel="noreferrer" className="visa-meta-chip" style={{ textDecoration: "none", cursor: "pointer", color: "var(--accent)" }}>
-                        🔗 Official Site
+                      <a href={visaData.official_url} target="_blank" rel="noreferrer" className="db-visa-chip db-visa-chip-link">
+                        🔗 Official
                       </a>
                     )}
                   </div>
                 </div>
 
-                <div className="two-col">
+                <div className="db-two-col">
                   <div>
-                    <div className="col-title">Requirements</div>
-                    <ul className="req-list">
+                    <div className="db-col-label">Requirements</div>
+                    <ul className="db-req-list">
                       {visaData.requirements?.map((r, i) => <li key={i}>{r}</li>)}
                     </ul>
                   </div>
                   <div>
-                    <div className="col-title">Step-by-Step Process</div>
+                    <div className="db-col-label">Step-by-Step Process</div>
                     {visaData.process?.map((s, i) => (
-                      <div className="step" key={i}>
-                        <div className="step-num">{i + 1}</div>
-                        <div className="step-text">{s}</div>
+                      <div key={i} className="db-step">
+                        <div className="db-step-num">{i + 1}</div>
+                        <div className="db-step-text">{s}</div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="tip-box">
-                  <div className="tip-label">💡 Expert Tips</div>
-                  <div className="tip-text">{visaData.tips}</div>
+                <div className="db-tip-box">
+                  <div className="db-tip-label">💡 Expert Tips</div>
+                  <div className="db-tip-text">{visaData.tips}</div>
                 </div>
-              </div>
-            )}
 
-            {/* DOCUMENT CHECKLIST */}
-            {visaData && (
-              <div className="card" style={{ marginTop: 0 }}>
-                <div className="section-header" style={{ marginBottom: 16 }}>
-                  <span className="section-title">📋 Document Checklist</span>
-                  <span className="badge badge-blue">{doneCount}/{totalCount} ready</span>
+                <button className="db-chat-cta" onClick={() => onOpenChat({ country: selectedCountry, visa: selectedVisa })}>
+                  💬 Ask AI about this visa →
+                </button>
+              </div>
+
+              {/* CHECKLIST */}
+              <div className="db-checklist-panel">
+                <div className="db-checklist-head">
+                  <span className="db-section-title">📋 Document Checklist</span>
+                  <span className="db-progress-badge">{doneCount}/{totalCount}</span>
                 </div>
                 {visaData.requirements?.map((req, i) => (
-                  <div key={i} className={`checklist-item${checklist[i] ? " checked" : ""}`}>
-                    <input type="checkbox" id={`chk_${i}`} checked={!!checklist[i]} onChange={() => toggleCheck(i)} />
-                    <label htmlFor={`chk_${i}`}>{req}</label>
+                  <div key={i} className={`db-check-item${checklist[i] ? " done" : ""}`}>
+                    <input type="checkbox" id={`c${i}`} checked={!!checklist[i]} onChange={() => toggleCheck(i)} />
+                    <label htmlFor={`c${i}`}>{req}</label>
                   </div>
                 ))}
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${pct}%` }} />
+                <div className="db-progress-bar">
+                  <div className="db-progress-fill" style={{ width: `${pct}%` }} />
                 </div>
-                <div className="progress-label">{pct}% of documents ready</div>
+                <div className="db-progress-label">{pct}% complete</div>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* SAMPLE QUESTIONS (shown when no country selected) */}
-            {!selectedCountry && (
-              <div>
-                <div className="section-header" style={{ marginTop: 8 }}>
-                  <span className="section-title">💡 Try asking...</span>
-                </div>
-                <div className="samples-grid">
-                  {[
-                    { icon: "🇨🇦", label: "Canada Study Permit", hint: "Requirements, SOP tips, work rights", q: "What are all the requirements for a Canada Study Permit from Pakistan? Give me step-by-step guidance." },
-                    { icon: "🇬🇧", label: "UK Skilled Worker Visa", hint: "Sponsorship, salary thresholds, ILR", q: "Explain the UK Skilled Worker visa process. What salary do I need and how does employer sponsorship work?" },
-                    { icon: "🇩🇪", label: "Germany Free Tuition", hint: "APS cert, blocked account, process", q: "How can I study in Germany for free? What is the APS certificate and how do I open a blocked account?" },
-                    { icon: "🇦🇺", label: "Australia PR Pathway", hint: "Points, 485 visa, skilled migration", q: "What is the fastest pathway from student visa to Permanent Residence in Australia?" },
-                    { icon: "🇺🇸", label: "US F-1 Interview Tips", hint: "214(b), ties, financial proof", q: "Give me expert tips for passing the US F-1 student visa interview as a Pakistani applicant." },
-                    { icon: "🇦🇪", label: "UAE Golden Visa", hint: "Eligibility, professions, 10-year visa", q: "How do I qualify for UAE Golden Visa? What professions and salary requirements apply?" },
-                  ].map((s, i) => (
-                    <button key={i} className="sample-card" onClick={() => onOpenChat({ prefill: s.q })}>
-                      <span className="sample-icon">{s.icon}</span>
-                      <div className="sample-label">{s.label}</div>
-                      <div className="sample-hint">{s.hint}</div>
-                    </button>
-                  ))}
-                </div>
+          {/* SAMPLE QUESTIONS (no country selected) */}
+          {!selectedCountry && (
+            <div className="db-section">
+              <div className="db-section-head">
+                <span className="db-section-title">💡 Popular Questions</span>
               </div>
-            )}
-          </div>
+              <div className="db-samples-grid">
+                {[
+                  { icon:"🇨🇦", label:"Canada Study Permit", hint:"Requirements, SOP, work rights", q:"What are all the requirements for a Canada Study Permit from Pakistan?" },
+                  { icon:"🇬🇧", label:"UK Skilled Worker", hint:"Sponsorship, salary thresholds, ILR", q:"Explain the UK Skilled Worker visa process and salary requirements." },
+                  { icon:"🇩🇪", label:"Germany Free Study", hint:"APS cert, blocked account, process", q:"How can I study in Germany for free? What is the APS certificate?" },
+                  { icon:"🇦🇺", label:"Australia PR Path", hint:"Points, 485 visa, migration", q:"What is the fastest pathway from student visa to Australian PR?" },
+                  { icon:"🇺🇸", label:"US F-1 Interview", hint:"214(b), ties, financial proof", q:"Expert tips for passing US F-1 student visa interview as Pakistani applicant." },
+                  { icon:"🇦🇪", label:"UAE Golden Visa", hint:"Eligibility, professions, 10yr", q:"How do I qualify for UAE Golden Visa? What professions apply?" },
+                ].map((s, i) => (
+                  <button key={i} className="db-sample-card" onClick={() => onOpenChat({ prefill: s.q })}>
+                    <span className="db-sample-icon">{s.icon}</span>
+                    <div className="db-sample-label">{s.label}</div>
+                    <div className="db-sample-hint">{s.hint}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>

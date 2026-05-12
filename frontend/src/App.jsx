@@ -5,6 +5,7 @@ import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
 import ChatPage from "./pages/ChatPage";
 import "./App.css";
+import "./chat.css";
 
 // 🔴 REPLACE with your Firebase config from Firebase Console
 const firebaseConfig = {
