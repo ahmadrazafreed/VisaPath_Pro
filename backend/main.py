@@ -112,7 +112,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
         "https://visa-path-pro.vercel.app",
-        "https://visa-path-pro.vercel.app",
+        "https://visapath-pro.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
@@ -223,6 +223,13 @@ async def chat_simple(req: ChatRequest, user=Depends(get_current_user)):
     # Use search only when explicitly requested
     tools = [types.Tool(google_search=types.GoogleSearch())] if req.use_search else []
     
+    # Build contents with history for conversation memory
+    contents = []
+    for h in (req.history or []):
+        role = "user" if h["role"] == "user" else "model"
+        contents.append(types.Content(role=role, parts=[types.Part(text=h["content"])]))
+    contents.append(types.Content(role="user", parts=[types.Part(text=req.message)]))
+
     config = types.GenerateContentConfig(
         system_instruction=system_prompt,
         temperature=0.3,
@@ -230,7 +237,7 @@ async def chat_simple(req: ChatRequest, user=Depends(get_current_user)):
     )
 
     try:
-        response = generate_with_rotation(req.message, config)
+        response = generate_with_rotation(contents, config)
         full_text = ""
         for part in response.candidates[0].content.parts:
             if hasattr(part, "text") and part.text:
