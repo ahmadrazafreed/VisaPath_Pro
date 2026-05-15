@@ -264,12 +264,19 @@ async def chat_stream(req: ChatRequest, user=Depends(get_current_user)):
 
     async def generate():
         try:
+            # Build contents with history for conversation memory
+            contents = []
+            for h in (req.history or []):
+                role = "user" if h["role"] == "user" else "model"
+                contents.append(types.Content(role=role, parts=[types.Part(text=h["content"])]))
+            contents.append(types.Content(role="user", parts=[types.Part(text=req.message)]))
+
             config = types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=0.3,
                 tools=tools if tools else None,
             )
-            response = generate_with_rotation(req.message, config)
+            response = generate_with_rotation(contents, config)
             full_text = ""
             for part in response.candidates[0].content.parts:
                 if hasattr(part, "text") and part.text:
