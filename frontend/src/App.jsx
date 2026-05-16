@@ -71,7 +71,7 @@ const api = {
             try {
               const d = JSON.parse(line.slice(6));
               if (d.error) { onError(d.error); return; }
-              if (d.done) { onDone(d.session_id); return; }
+              if (d.done) { onDone(d.session_id, d.model); return; }
               if (d.text) onChunk(d.text);
             } catch {}
           }
@@ -92,7 +92,8 @@ function MD({ text }) {
     .replace(/^## (.+)$/gm,"<h2>$1</h2>")
     .replace(/^# (.+)$/gm,"<h1>$1</h1>")
     .replace(/^\d+\. (.+)$/gm,"<li class='ol'>$1</li>")
-    .replace(/^[-•✓] (.+)$/gm,"<li>$1</li>")
+    .replace(/^[-•✓*] (.+)$/gm,"<li>$1</li>")
+    .replace(/^\* \*\*(.+?)\*\*: (.+)$/gm,"<li><strong>$1:</strong> $2</li>")
     .replace(/(<li[^>]*>[\s\S]*?<\/li>\n?)+/g,m=>`<ul>${m}</ul>`)
     .replace(/\n\n+/g,"</p><p>").replace(/\n/g,"<br/>").trim();
   return <div className="md" dangerouslySetInnerHTML={{__html:`<p>${html}</p>`}}/>;
@@ -548,6 +549,7 @@ function ChatPage({ user, context, onBack }) {
   const [liveSearch, setLiveSearch]   = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [mobileOpen, setMobileOpen]   = useState(false);
+  const [lastModel, setLastModel]     = useState("⚡ Flash");
   const stopRef   = useRef(false);
   const bottomRef = useRef(null);
   const taRef     = useRef(null);
@@ -559,7 +561,10 @@ function ChatPage({ user, context, onBack }) {
   const init    = name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 
   useEffect(()=>{ api.get("/api/sessions",user).then(d=>setSessions(d||[])).catch(()=>{}); },[]);
-  useEffect(()=>{ sid?api.get(`/api/sessions/${sid}/messages`,user).then(d=>setMsgs(d||[])).catch(()=>{}):setMsgs([]); },[sid]);
+  useEffect(()=>{ sid?api.get(`/api/sessions/${sid}/messages`,user).then(d=>{
+    const sorted = (d||[]).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+    setMsgs(sorted);
+  }).catch(()=>{}):setMsgs([]); },[sid]);
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs,stream,busy]);
   useEffect(()=>{
     if(context?.prefill&&!fired.current){fired.current=true;setTimeout(()=>send(context.prefill),400);}
@@ -590,7 +595,7 @@ function ChatPage({ user, context, onBack }) {
           if(stopRef.current)return;
           full+=chunk; setStream(full);
         },
-        id=>{ if(id)newSid=id; },
+        (id, modelLabel)=>{ if(id)newSid=id; if(modelLabel)setLastModel(modelLabel); },
         async()=>{
           if(!stopRef.current){
             try{
@@ -603,7 +608,7 @@ function ChatPage({ user, context, onBack }) {
     }catch(e){ full="⚠️ "+e.message; }
     if(!stopRef.current||full){
       setStream(""); setSid(newSid);
-      setMsgs(p=>[...p,{role:"assistant",content:full||stream,timestamp:new Date().toISOString()}]);
+      setMsgs(p=>[...p,{role:"assistant",content:full||stream,timestamp:new Date().toISOString(),model:lastModel}]);
     }
     setBusy(false); setCanStop(false); stopRef.current=false;
     api.get("/api/sessions",user).then(d=>setSessions(d||[])).catch(()=>{});
@@ -773,7 +778,10 @@ function ChatPage({ user, context, onBack }) {
                 {m.role==="user"?init:"✈"}
               </div>
               <div className="chat-bubble" style={{maxWidth:"76%",borderRadius:m.role==="user"?"16px 16px 4px 16px":"4px 16px 16px 16px",padding:m.role==="user"?"11px 16px":"8px 4px",fontSize:"0.9rem",lineHeight:1.75,wordBreak:"break-word",background:m.role==="user"?"#1e3a5f":"transparent",color:m.role==="user"?"#e2eeff":"#e8eaf0"}}>
-                {m.role==="assistant"?<MD text={m.content}/>:m.content}
+                {m.role==="assistant"?<>
+                {m.model&&<div style={{fontSize:"0.63rem",color:"#4f8ef7",marginBottom:4,fontWeight:600}}>{m.model}</div>}
+                <MD text={m.content}/>
+              </>:m.content}
               </div>
             </div>
           ))}
@@ -783,6 +791,7 @@ function ChatPage({ user, context, onBack }) {
             <div className="chat-msg" style={{display:"flex",alignItems:"flex-start",gap:10,padding:"5px 22px",maxWidth:880,width:"100%",margin:"0 auto"}}>
               <div style={{width:30,height:30,borderRadius:"50%",flexShrink:0,background:"linear-gradient(135deg,#4f8ef7,#7c6ef7)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.82rem",color:"white",marginTop:4}}>✈</div>
               <div style={{maxWidth:"76%",padding:"8px 4px",fontSize:"0.9rem",lineHeight:1.75}}>
+                <div style={{fontSize:"0.65rem",color:"#4f8ef7",marginBottom:4,fontWeight:600}}>{lastModel}</div>
                 <MD text={stream}/>
                 <span style={{display:"inline-block",width:2,height:15,background:"#4f8ef7",marginLeft:2,verticalAlign:"middle",animation:"blink 0.8s step-end infinite"}}/>
               </div>
