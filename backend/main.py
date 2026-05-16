@@ -349,7 +349,14 @@ async def chat_stream(req: ChatRequest, user=Depends(get_current_user)):
                 await asyncio.sleep(0.008)
 
             save_to_firestore(session_id, uid, req.message, full_text, req.country, req.visa_type)
-            yield f"data: {json.dumps({'text': '', 'done': True, 'session_id': session_id})}\n\n"
+            model_labels = {
+                "gemini-2.0-flash": "⚡ Flash",
+                "gemini-1.5-flash": "⚡ Flash 1.5",
+                "gemini-1.5-pro": "🎯 Pro",
+                "gemini-2.0-flash-thinking-exp": "🧠 Thinking",
+            }
+            model_label = model_labels.get(selected_model, "⚡ Flash")
+            yield f"data: {json.dumps({'text': '', 'done': True, 'session_id': session_id, 'model': model_label})}\n\n"
 
         except Exception as e:
             print(f"❌ STREAM ERROR: {str(e)}")
