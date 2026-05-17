@@ -82,21 +82,40 @@ const api = {
 };
 
 // ── Markdown ──────────────────────────────────────────────────────────────
-function MD({ text }) {
-  const html = text
+function applyInline(t) {
+  return t
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
     .replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>")
     .replace(/\*(.+?)\*/g,"<em>$1</em>")
-    .replace(/`([^`]+)`/g,"<code>$1</code>")
-    .replace(/^### (.+)$/gm,"<h3>$1</h3>")
-    .replace(/^## (.+)$/gm,"<h2>$1</h2>")
-    .replace(/^# (.+)$/gm,"<h1>$1</h1>")
-    .replace(/^\d+\. (.+)$/gm,"<li class='ol'>$1</li>")
-    .replace(/^[-•✓*] (.+)$/gm,"<li>$1</li>")
-    .replace(/^\* \*\*(.+?)\*\*: (.+)$/gm,"<li><strong>$1:</strong> $2</li>")
-    .replace(/(<li[^>]*>[\s\S]*?<\/li>\n?)+/g,m=>`<ul>${m}</ul>`)
-    .replace(/\n\n+/g,"</p><p>").replace(/\n/g,"<br/>").trim();
-  return <div className="md" dangerouslySetInnerHTML={{__html:`<p>${html}</p>`}}/>;
+    .replace(/`([^`]+)`/g,"<code>$1</code>");
+}
+
+function MD({ text }) {
+  const lines = text.split("\n");
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const raw = lines[i];
+    const line = raw.trim();
+    if (!line) { i++; continue; }
+    if (line.startsWith("### ")) { out.push(`<h3>${applyInline(line.slice(4))}</h3>`); i++; continue; }
+    if (line.startsWith("## "))  { out.push(`<h2>${applyInline(line.slice(3))}</h2>`); i++; continue; }
+    if (line.startsWith("# "))   { out.push(`<h1>${applyInline(line.slice(2))}</h1>`); i++; continue; }
+    // Bullet or numbered list
+    if (/^(\*|-|•|\d+\.) /.test(line)) {
+      const items = [];
+      while (i < lines.length && /^(\*|-|•|\d+\.) /.test(lines[i].trim())) {
+        const c = lines[i].trim().replace(/^(\*|-|•|\d+\.) /, "");
+        items.push(`<li>${applyInline(c)}</li>`);
+        i++;
+      }
+      out.push(`<ul>${items.join("")}</ul>`);
+      continue;
+    }
+    out.push(`<p>${applyInline(line)}</p>`);
+    i++;
+  }
+  return <div className="md" dangerouslySetInnerHTML={{__html: out.join("")}}/>;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
