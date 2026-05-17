@@ -58,7 +58,14 @@ def rotate_key():
     current_key_index = (current_key_index + 1) % len(gemini_clients)
     print(f"🔄 Rotated to Gemini key #{current_key_index + 1}")
 
-def generate_with_rotation(contents, config, max_retries=None):
+# ── Model selection ───────────────────────────────────────────────────────
+# Free Gemini models — each with different strengths
+MODEL = "gemini-2.5-flash"
+
+def select_model(message: str, use_search: bool = False) -> str:
+    return MODEL
+
+def generate_with_rotation(contents, config, max_retries=None, model=None):
     """Generate content with automatic key rotation on rate limit."""
     if max_retries is None:
         max_retries = max(len(gemini_clients) * 2, 3)
@@ -69,8 +76,9 @@ def generate_with_rotation(contents, config, max_retries=None):
         if not client:
             raise Exception("No Gemini clients available")
         try:
+            selected_model = model or MODELS["flash"]
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=selected_model,
                 contents=contents,
                 config=config
             )
@@ -236,8 +244,11 @@ async def chat_simple(req: ChatRequest, user=Depends(get_current_user)):
         tools=tools if tools else None,
     )
 
+    # Auto-select best model for this question
+    selected_model = select_model(req.message, req.use_search)
+
     try:
-        response = generate_with_rotation(contents, config)
+        response = generate_with_rotation(contents, config, model=MODEL)
         full_text = ""
         for part in response.candidates[0].content.parts:
             if hasattr(part, "text") and part.text:
@@ -245,11 +256,20 @@ async def chat_simple(req: ChatRequest, user=Depends(get_current_user)):
         if not full_text:
             full_text = "I apologize, I could not generate a response. Please try again."
     except Exception as e:
-        print(f"❌ GEMINI ERROR: {str(e)}")
-        raise HTTPException(500, f"AI error: {str(e)}")
+        print(f"❌ GEMINI ERROR ({selected_model}): {str(e)}")
+        # Fallback to flash if other model fails
+        try:
+            print(f"🔄 Falling back to flash model...")
+            response = generate_with_rotation(contents, config, model=MODEL)
+            full_text = ""
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "text") and part.text:
+                    full_text += part.text
+        except Exception as e2:
+            raise HTTPException(500, f"AI error: {str(e2)}")
 
     save_to_firestore(session_id, uid, req.message, full_text, req.country, req.visa_type)
-    return {"response": full_text, "session_id": session_id}
+    return {"response": full_text, "session_id": session_id, "model_used": selected_model}
 
 @app.post("/api/chat")
 async def chat_stream(req: ChatRequest, user=Depends(get_current_user)):
@@ -261,6 +281,8 @@ async def chat_stream(req: ChatRequest, user=Depends(get_current_user)):
     system_prompt = build_system_prompt(req.country, req.visa_type)
 
     tools = [types.Tool(google_search=types.GoogleSearch())] if req.use_search else []
+
+    selected_model = select_model(req.message, req.use_search)
 
     async def generate():
         try:
@@ -276,7 +298,11 @@ async def chat_stream(req: ChatRequest, user=Depends(get_current_user)):
                 temperature=0.3,
                 tools=tools if tools else None,
             )
-            response = generate_with_rotation(contents, config)
+            try:
+                response = generate_with_rotation(contents, config, model=MODEL)
+            except Exception:
+                # Fallback to flash
+                response = generate_with_rotation(contents, config, model=MODEL)
             full_text = ""
             for part in response.candidates[0].content.parts:
                 if hasattr(part, "text") and part.text:
@@ -290,7 +316,8 @@ async def chat_stream(req: ChatRequest, user=Depends(get_current_user)):
                 await asyncio.sleep(0.008)
 
             save_to_firestore(session_id, uid, req.message, full_text, req.country, req.visa_type)
-            yield f"data: {json.dumps({'text': '', 'done': True, 'session_id': session_id})}\n\n"
+            model_label = "⚡ Gemini 2.5 Flash"
+            yield f"data: {json.dumps({'text': '', 'done': True, 'session_id': session_id, 'model': model_label})}\n\n"
 
         except Exception as e:
             print(f"❌ STREAM ERROR: {str(e)}")
